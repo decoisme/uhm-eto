@@ -118,6 +118,26 @@ node upload-photos.js
 
 ### Step 6: Test
 
+**Method 1: Use Test Tool (Recommended) 🆕**
+
+1. Start your local server:
+   ```bash
+   START-SERVER.bat
+   ```
+
+2. Open test tool in browser:
+   ```
+   http://localhost:8000/test-supabase.html
+   ```
+
+3. Click **"🚀 Run All Tests"**
+
+4. Check results:
+   - ✅ All green = Everything works!
+   - ❌ Any red = Follow recommendations shown
+
+**Method 2: Manual Browser Console**
+
 1. Open browser console (F12)
 2. You should see:
    ```

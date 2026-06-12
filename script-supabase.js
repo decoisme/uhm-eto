@@ -29,6 +29,11 @@ async function initSupabase() {
     console.log('🔌 Connecting to Supabase...');
     
     try {
+        // Check if Supabase is loaded
+        if (!window.supabase) {
+            throw new Error('Supabase library not loaded');
+        }
+        
         // Initialize Supabase client
         supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         
@@ -39,6 +44,7 @@ async function initSupabase() {
         
     } catch (error) {
         console.error('❌ Supabase initialization error:', error);
+        console.log('📁 Using local photos instead...');
         // Fallback to local photos
         loadLocalPhotos();
     }
@@ -48,107 +54,110 @@ async function loadPhotosFromSupabase() {
     console.log('📸 Loading photos from Supabase Storage...');
     
     try {
-        // List all files in the bucket (try root first)
-        console.log('Listing files from bucket:', STORAGE_BUCKET);
+        // Test connection first
+        const { data: testData, error: testError } = await supabaseClient
+            .storage
+            .from(STORAGE_BUCKET)
+            .list('', { limit: 1 });
         
-        let { data: files, error } = await supabaseClient
+        if (testError) {
+            console.error('❌ Bucket connection error:', testError);
+            throw testError;
+        }
+        
+        console.log('✅ Bucket accessible, listing files...');
+        
+        // Try multiple approaches to find photos
+        let imageFiles = [];
+        let pathPrefix = '';
+        
+        // Approach 1: List root directory
+        console.log('📂 Checking root directory...');
+        const { data: rootFiles, error: rootError } = await supabaseClient
             .storage
             .from(STORAGE_BUCKET)
             .list('', {
                 limit: 1000,
-                offset: 0,
                 sortBy: { column: 'name', order: 'asc' }
             });
         
-        if (error) {
-            console.error('Error listing files:', error);
-            throw error;
-        }
-        
-        console.log('📁 Raw files from Supabase:', files);
-        console.log('📊 Total items found:', files.length);
-        
-        // Check if files are in a subfolder
-        const folders = files.filter(f => !f.name.match(/\.(jpg|jpeg|png|webp)$/i));
-        console.log('📂 Folders found:', folders.map(f => f.name));
-        
-        // If no images in root, try 'gambar' folder
-        if (files.length === 0 || !files.some(f => f.name.match(/\.(jpg|jpeg|png|webp)$/i))) {
-            console.log('🔍 No images in root, trying "gambar" folder...');
+        if (!rootError && rootFiles) {
+            console.log(`📁 Found ${rootFiles.length} items in root`);
+            const rootImages = rootFiles.filter(f => 
+                f.name && f.name.match(/\.(jpg|jpeg|png|webp|gif)$/i)
+            );
             
-            const { data: subFiles, error: subError } = await supabaseClient
-                .storage
-                .from(STORAGE_BUCKET)
-                .list('gambar', {
-                    limit: 1000,
-                    offset: 0,
-                    sortBy: { column: 'name', order: 'asc' }
-                });
-            
-            if (!subError && subFiles && subFiles.length > 0) {
-                console.log('✅ Found files in "gambar" folder:', subFiles.length);
-                files = subFiles.map(f => ({ ...f, name: `gambar/${f.name}` }));
+            if (rootImages.length > 0) {
+                console.log(`✅ Found ${rootImages.length} images in root`);
+                imageFiles = rootImages;
+                pathPrefix = '';
+            } else {
+                // Approach 2: Try 'gambar' subfolder
+                console.log('📂 Checking "gambar" subfolder...');
+                const { data: gambarFiles, error: gambarError } = await supabaseClient
+                    .storage
+                    .from(STORAGE_BUCKET)
+                    .list('gambar', {
+                        limit: 1000,
+                        sortBy: { column: 'name', order: 'asc' }
+                    });
+                
+                if (!gambarError && gambarFiles) {
+                    console.log(`📁 Found ${gambarFiles.length} items in gambar/`);
+                    const gambarImages = gambarFiles.filter(f => 
+                        f.name && f.name.match(/\.(jpg|jpeg|png|webp|gif)$/i)
+                    );
+                    
+                    if (gambarImages.length > 0) {
+                        console.log(`✅ Found ${gambarImages.length} images in gambar/`);
+                        imageFiles = gambarImages;
+                        pathPrefix = 'gambar/';
+                    }
+                }
             }
         }
-        
-        console.log(`✅ Found ${files.length} items in Supabase`);
-        
-        // Filter image files only
-        const imageFiles = files.filter(file => {
-            const ext = file.name.toLowerCase();
-            const isImage = ext.endsWith('.jpg') || ext.endsWith('.jpeg') || 
-                           ext.endsWith('.png') || ext.endsWith('.webp') ||
-                           ext.endsWith('.gif');
-            if (isImage) {
-                console.log('✅ Valid image:', file.name);
-            }
-            return isImage;
-        });
-        
-        console.log(`📷 ${imageFiles.length} valid image files`);
         
         if (imageFiles.length === 0) {
-            console.warn('⚠️ No image files found. Files in bucket:', files.map(f => f.name));
-            throw new Error('No images found');
+            console.warn('⚠️ No images found in Supabase. Trying local fallback...');
+            throw new Error('No images found in Supabase Storage');
         }
+        
+        // Sort numerically if filenames are numbers
+        imageFiles.sort((a, b) => {
+            const numA = parseInt(a.name.match(/\d+/)?.[0] || '0');
+            const numB = parseInt(b.name.match(/\d+/)?.[0] || '0');
+            return numA - numB;
+        });
         
         // Generate photo array with public URLs
         photos = imageFiles.map((file, index) => {
+            const fullPath = pathPrefix + file.name;
             const { data } = supabaseClient
                 .storage
                 .from(STORAGE_BUCKET)
-                .getPublicUrl(file.name);
+                .getPublicUrl(fullPath);
             
-            console.log(`📸 Photo ${index + 1}: ${file.name} → ${data.publicUrl}`);
+            console.log(`📸 Photo ${index + 1}: ${fullPath} → ${data.publicUrl}`);
             
             return {
                 url: data.publicUrl,
                 title: `Memory #${index + 1}`,
-                caption: file.name.replace(/\.[^/.]+$/, '').replace('gambar/', ''),
+                caption: file.name.replace(/\.[^/.]+$/, ''),
                 fileName: file.name,
                 loaded: false,
                 texture: null
             };
         });
         
-        console.log('✅ Photos loaded:', photos.length);
-        console.log('📋 Sample URL:', photos[0]?.url);
-        
+        console.log('✅ Supabase photos loaded:', photos.length);
         isLoadingPhotos = false;
         
-        // Update UI with total
+        // Update UI
         document.getElementById('total').textContent = photos.length;
         
-        if (photos.length === 0) {
-            console.warn('⚠️ No photos found in Supabase Storage');
-            // Don't show alert, just fallback
-            throw new Error('No photos found');
-        }
-        
     } catch (error) {
-        console.error('❌ Error loading photos from Supabase:', error);
+        console.error('❌ Supabase error:', error.message);
         console.log('📁 Falling back to local photos...');
-        // Fallback to local
         loadLocalPhotos();
     }
 }
@@ -327,20 +336,21 @@ function animate() {
     
     if (photoPlane) {
         if (isSlideshow) {
-            photoPlane.material.opacity = Math.min(photoPlane.material.opacity + 0.05, 0.8);
+            // Photo is highly visible during slideshow
+            photoPlane.material.opacity = Math.min(photoPlane.material.opacity + 0.08, 0.85);
             photoPlane.rotation.z = Math.sin(time * 0.5) * 0.03;
             photoPlane.position.x = Math.sin(time * 0.4) * 0.15;
             photoPlane.position.y = Math.cos(time * 0.35) * 0.15;
-            const scalePulse = 1 + Math.sin(time * 0.8) * 0.05;
+            const scalePulse = 1 + Math.sin(time * 0.8) * 0.08;
             photoPlane.scale.set(scalePulse, scalePulse, 1);
             
             if (photoPlane.userData.glow) {
-                const glowPulse = (Math.sin(time * 2) + 1) * 0.2;
+                const glowPulse = (Math.sin(time * 2) + 1) * 0.25;
                 photoPlane.userData.glow.material.opacity = glowPulse;
                 photoPlane.userData.glow.rotation.z = Math.sin(time * 0.3) * 0.05;
                 photoPlane.userData.glow.position.x = photoPlane.position.x;
                 photoPlane.userData.glow.position.y = photoPlane.position.y;
-                const glowScale = scalePulse * (1 + glowPulse * 0.3);
+                const glowScale = scalePulse * (1 + glowPulse * 0.4);
                 photoPlane.userData.glow.scale.set(glowScale, glowScale, 1);
             }
         } else {
@@ -382,29 +392,88 @@ function updatePhotoTexture() {
 
 // MediaPipe
 function initMediaPipe() {
-    hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
-    hands.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
-    hands.onResults(onResults);
+    console.log('🎥 Initializing MediaPipe Hands...');
     
-    const video = document.getElementById('video');
-    navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } })
+    try {
+        const video = document.getElementById('video');
+        
+        // First get camera access
+        navigator.mediaDevices.getUserMedia({ 
+            video: { 
+                width: 640, 
+                height: 480,
+                facingMode: 'user'
+            } 
+        })
         .then((stream) => {
             video.srcObject = stream;
+            
             video.onloadeddata = () => {
+                console.log('✅ Camera stream ready');
                 document.getElementById('status').classList.add('active');
                 document.getElementById('statusText').textContent = 'Camera Active';
-                const cam = new Camera(video, { onFrame: async () => await hands.send({ image: video }), width: 640, height: 480 });
+                
+                // Initialize MediaPipe after camera is ready
+                hands = new Hands({
+                    locateFile: (file) => {
+                        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${file}`;
+                    }
+                });
+                
+                hands.setOptions({
+                    maxNumHands: 1,
+                    modelComplexity: 0,
+                    minDetectionConfidence: 0.7,
+                    minTrackingConfidence: 0.5
+                });
+                
+                hands.onResults(onResults);
+                
+                console.log('✅ MediaPipe Hands configured');
+                
+                // Start the camera loop
+                const cam = new Camera(video, {
+                    onFrame: async () => {
+                        try {
+                            if (hands) {
+                                await hands.send({ image: video });
+                            }
+                        } catch (e) {
+                            console.warn('Frame processing error:', e.message);
+                        }
+                    },
+                    width: 640,
+                    height: 480
+                });
+                
                 cam.start();
+                console.log('✅ Hand tracking started');
             };
+        })
+        .catch((error) => {
+            console.error('❌ Camera error:', error);
+            document.getElementById('statusText').textContent = 'Camera Error';
+            console.log('ℹ️ You can still use manual controls via the control panel');
         });
+        
+    } catch (error) {
+        console.error('❌ MediaPipe initialization error:', error);
+        document.getElementById('statusText').textContent = 'Gesture Error';
+        console.log('ℹ️ Hand tracking initialization failed. Manual controls available.');
+    }
 }
 
 function onResults(results) {
     if (!results.multiHandLandmarks?.[0]) return;
-    const gesture = detectGesture(results.multiHandLandmarks[0]);
-    if (gesture !== lastGesture) {
-        handleGesture(gesture);
-        lastGesture = gesture;
+    
+    try {
+        const gesture = detectGesture(results.multiHandLandmarks[0]);
+        if (gesture !== lastGesture) {
+            handleGesture(gesture);
+            lastGesture = gesture;
+        }
+    } catch (error) {
+        console.warn('Gesture detection error:', error.message);
     }
 }
 
@@ -576,8 +645,17 @@ function startTimer() {
 async function init() {
     console.log('🚀 Initializing with Supabase...');
     
+    const debugInfo = document.getElementById('debugInfo');
+    const updateDebug = (msg) => {
+        if (debugInfo) debugInfo.textContent = msg;
+    };
+    
+    updateDebug('Connecting to Supabase...');
+    
     // Initialize Supabase and load photos first
     await initSupabase();
+    
+    updateDebug(`Loaded ${photos.length} photos ${supabaseClient ? '(Supabase)' : '(Local)'}`);
     
     // Then init Three.js and UI
     initThree();
@@ -590,7 +668,11 @@ async function init() {
     }
     
     startTimer();
-    setTimeout(initMediaPipe, 500);
+    
+    setTimeout(() => {
+        updateDebug('Initializing camera...');
+        initMediaPipe();
+    }, 500);
     
     console.log('✅ Initialization complete!');
 }

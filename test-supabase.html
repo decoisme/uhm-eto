@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supabase Connection Test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0a0a0a;
+            color: #fff;
+            padding: 2rem;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #FF4FA2;
+            margin-bottom: 2rem;
+        }
+        .test-section {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .test-section h2 {
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+            color: #FF4FA2;
+        }
+        button {
+            background: #FF4FA2;
+            color: #fff;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            margin-right: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+        button:hover {
+            background: #ff3a8f;
+        }
+        .result {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #0d0d0d;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.9rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .success { color: #10B981; }
+        .error { color: #EF4444; }
+        .warning { color: #F59E0B; }
+        .info { color: #3B82F6; }
+        code {
+            background: #2a2a2a;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .status {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-left: 0.5rem;
+        }
+        .status.pending { background: #374151; color: #9CA3AF; }
+        .status.success { background: #065F46; color: #10B981; }
+        .status.failed { background: #7F1D1D; color: #EF4444; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔌 Supabase Connection Tester</h1>
+        
+        <div class="test-section">
+            <h2>1. Configuration Check <span id="status1" class="status pending">NOT TESTED</span></h2>
+            <p>Verify Supabase credentials are configured</p>
+            <button onclick="testConfig()">Test Configuration</button>
+            <div id="result1" class="result" style="display:none;"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>2. Connection Test <span id="status2" class="status pending">NOT TESTED</span></h2>
+            <p>Test connection to Supabase</p>
+            <button onclick="testConnection()">Test Connection</button>
+            <div id="result2" class="result" style="display:none;"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>3. Bucket Access Test <span id="status3" class="status pending">NOT TESTED</span></h2>
+            <p>Check if the storage bucket exists and is accessible</p>
+            <button onclick="testBucket()">Test Bucket</button>
+            <div id="result3" class="result" style="display:none;"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>4. Photo Listing Test <span id="status4" class="status pending">NOT TESTED</span></h2>
+            <p>List photos from root and gambar folder</p>
+            <button onclick="testListPhotos()">List Photos</button>
+            <div id="result4" class="result" style="display:none;"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>5. Public URL Test <span id="status5" class="status pending">NOT TESTED</span></h2>
+            <p>Test if photo URLs are publicly accessible</p>
+            <button onclick="testPublicURL()">Test Public URL</button>
+            <div id="result5" class="result" style="display:none;"></div>
+        </div>
+        
+        <div class="test-section">
+            <h2>6. Run All Tests</h2>
+            <button onclick="runAllTests()">🚀 Run All Tests</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        // Configuration (same as script-supabase.js)
+        const SUPABASE_URL = 'https://rdxyazvuvjbpofebzrnc.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJkeHlhenZ1dmpicG9mZWJ6cm5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyMjU0NjMsImV4cCI6MjA5NjgwMTQ2M30.0B8i-w77gUADrrXnlOJIXKjfQn9U4ylznCu-Lccmv4c';
+        const STORAGE_BUCKET = 'photos';
+
+        let supabase;
+
+        function log(resultId, message, type = 'info') {
+            const result = document.getElementById(resultId);
+            result.style.display = 'block';
+            const span = document.createElement('span');
+            span.className = type;
+            span.textContent = message + '\n';
+            result.appendChild(span);
+        }
+
+        function setStatus(statusId, status) {
+            const statusEl = document.getElementById(statusId);
+            statusEl.className = `status ${status}`;
+            statusEl.textContent = status.toUpperCase();
+        }
+
+        function clearResult(resultId) {
+            const result = document.getElementById(resultId);
+            result.innerHTML = '';
+            result.style.display = 'none';
+        }
+
+        async function testConfig() {
+            clearResult('result1');
+            setStatus('status1', 'pending');
+
+            log('result1', '🔍 Checking configuration...', 'info');
+            
+            if (!SUPABASE_URL) {
+                log('result1', '❌ SUPABASE_URL is not set', 'error');
+                setStatus('status1', 'failed');
+                return false;
+            }
+            log('result1', `✅ SUPABASE_URL: ${SUPABASE_URL}`, 'success');
+
+            if (!SUPABASE_ANON_KEY) {
+                log('result1', '❌ SUPABASE_ANON_KEY is not set', 'error');
+                setStatus('status1', 'failed');
+                return false;
+            }
+            log('result1', `✅ SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY.substring(0, 30)}...`, 'success');
+
+            if (!STORAGE_BUCKET) {
+                log('result1', '❌ STORAGE_BUCKET is not set', 'error');
+                setStatus('status1', 'failed');
+                return false;
+            }
+            log('result1', `✅ STORAGE_BUCKET: ${STORAGE_BUCKET}`, 'success');
+
+            log('result1', '✅ Configuration looks good!', 'success');
+            setStatus('status1', 'success');
+            return true;
+        }
+
+        async function testConnection() {
+            clearResult('result2');
+            setStatus('status2', 'pending');
+
+            log('result2', '🔌 Testing connection to Supabase...', 'info');
+
+            try {
+                if (!window.supabase) {
+                    log('result2', '❌ Supabase library not loaded', 'error');
+                    setStatus('status2', 'failed');
+                    return false;
+                }
+
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                log('result2', '✅ Supabase client created successfully', 'success');
+
+                // Try a simple query to verify connection
+                const { data, error } = await supabase.storage.listBuckets();
+                
+                if (error) {
+                    log('result2', `❌ Connection error: ${error.message}`, 'error');
+                    setStatus('status2', 'failed');
+                    return false;
+                }
+
+                log('result2', `✅ Connected! Found ${data.length} bucket(s)`, 'success');
+                log('result2', `Buckets: ${data.map(b => b.name).join(', ')}`, 'info');
+                
+                setStatus('status2', 'success');
+                return true;
+            } catch (error) {
+                log('result2', `❌ Error: ${error.message}`, 'error');
+                setStatus('status2', 'failed');
+                return false;
+            }
+        }
+
+        async function testBucket() {
+            clearResult('result3');
+            setStatus('status3', 'pending');
+
+            log('result3', `🗂️ Checking bucket "${STORAGE_BUCKET}"...`, 'info');
+
+            try {
+                if (!supabase) {
+                    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                }
+
+                // Try to list files (even empty list means bucket exists)
+                const { data, error } = await supabase
+                    .storage
+                    .from(STORAGE_BUCKET)
+                    .list('', { limit: 1 });
+
+                if (error) {
+                    log('result3', `❌ Bucket error: ${error.message}`, 'error');
+                    if (error.message.includes('not found')) {
+                        log('result3', `💡 Bucket "${STORAGE_BUCKET}" does not exist. Create it in Supabase Dashboard.`, 'warning');
+                    }
+                    setStatus('status3', 'failed');
+                    return false;
+                }
+
+                log('result3', `✅ Bucket "${STORAGE_BUCKET}" is accessible!`, 'success');
+                
+                // Check bucket info
+                const { data: buckets } = await supabase.storage.listBuckets();
+                const bucket = buckets.find(b => b.name === STORAGE_BUCKET);
+                
+                if (bucket) {
+                    log('result3', `Bucket ID: ${bucket.id}`, 'info');
+                    log('result3', `Public: ${bucket.public ? 'YES ✅' : 'NO ❌'}`, bucket.public ? 'success' : 'warning');
+                    if (!bucket.public) {
+                        log('result3', '⚠️ Bucket is NOT public. Photos may not load.', 'warning');
+                        log('result3', '💡 Go to Supabase Dashboard → Storage → Bucket Settings → Enable "Public bucket"', 'info');
+                    }
+                }
+                
+                setStatus('status3', 'success');
+                return true;
+            } catch (error) {
+                log('result3', `❌ Error: ${error.message}`, 'error');
+                setStatus('status3', 'failed');
+                return false;
+            }
+        }
+
+        async function testListPhotos() {
+            clearResult('result4');
+            setStatus('status4', 'pending');
+
+            log('result4', '📸 Listing photos...', 'info');
+
+            try {
+                if (!supabase) {
+                    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                }
+
+                // Check root
+                log('result4', '📂 Checking root directory...', 'info');
+                const { data: rootFiles, error: rootError } = await supabase
+                    .storage
+                    .from(STORAGE_BUCKET)
+                    .list('', { limit: 1000, sortBy: { column: 'name', order: 'asc' } });
+
+                if (rootError) {
+                    log('result4', `❌ Error listing root: ${rootError.message}`, 'error');
+                } else {
+                    const rootImages = rootFiles.filter(f => f.name && f.name.match(/\.(jpg|jpeg|png|webp|gif)$/i));
+                    log('result4', `Found ${rootFiles.length} items, ${rootImages.length} images in root`, rootImages.length > 0 ? 'success' : 'warning');
+                    
+                    if (rootImages.length > 0) {
+                        log('result4', 'Sample files:', 'info');
+                        rootImages.slice(0, 5).forEach(f => {
+                            log('result4', `  - ${f.name}`, 'info');
+                        });
+                        if (rootImages.length > 5) {
+                            log('result4', `  ... and ${rootImages.length - 5} more`, 'info');
+                        }
+                    }
+                }
+
+                // Check gambar folder
+                log('result4', '📂 Checking "gambar" folder...', 'info');
+                const { data: gambarFiles, error: gambarError } = await supabase
+                    .storage
+                    .from(STORAGE_BUCKET)
+                    .list('gambar', { limit: 1000, sortBy: { column: 'name', order: 'asc' } });
+
+                if (gambarError) {
+                    log('result4', `⚠️ No "gambar" folder found (this is OK if photos are in root)`, 'warning');
+                } else {
+                    const gambarImages = gambarFiles.filter(f => f.name && f.name.match(/\.(jpg|jpeg|png|webp|gif)$/i));
+                    log('result4', `Found ${gambarFiles.length} items, ${gambarImages.length} images in gambar/`, gambarImages.length > 0 ? 'success' : 'warning');
+                    
+                    if (gambarImages.length > 0) {
+                        log('result4', 'Sample files:', 'info');
+                        gambarImages.slice(0, 5).forEach(f => {
+                            log('result4', `  - gambar/${f.name}`, 'info');
+                        });
+                        if (gambarImages.length > 5) {
+                            log('result4', `  ... and ${gambarImages.length - 5} more`, 'info');
+                        }
+                    }
+                }
+
+                const totalImages = (rootFiles?.filter(f => f.name?.match(/\.(jpg|jpeg|png|webp|gif)$/i)).length || 0) +
+                                   (gambarFiles?.filter(f => f.name?.match(/\.(jpg|jpeg|png|webp|gif)$/i)).length || 0);
+
+                if (totalImages === 0) {
+                    log('result4', '❌ No photos found anywhere!', 'error');
+                    log('result4', '💡 Upload photos to Supabase Storage bucket', 'warning');
+                    setStatus('status4', 'failed');
+                    return false;
+                } else {
+                    log('result4', `✅ Total: ${totalImages} photos found!`, 'success');
+                    setStatus('status4', 'success');
+                    return true;
+                }
+            } catch (error) {
+                log('result4', `❌ Error: ${error.message}`, 'error');
+                setStatus('status4', 'failed');
+                return false;
+            }
+        }
+
+        async function testPublicURL() {
+            clearResult('result5');
+            setStatus('status5', 'pending');
+
+            log('result5', '🌐 Testing public URL access...', 'info');
+
+            try {
+                if (!supabase) {
+                    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                }
+
+                // Get first photo
+                const { data: files } = await supabase
+                    .storage
+                    .from(STORAGE_BUCKET)
+                    .list('', { limit: 1 });
+
+                let testFile = files?.find(f => f.name?.match(/\.(jpg|jpeg|png|webp|gif)$/i));
+                
+                if (!testFile) {
+                    const { data: gambarFiles } = await supabase
+                        .storage
+                        .from(STORAGE_BUCKET)
+                        .list('gambar', { limit: 1 });
+                    testFile = gambarFiles?.find(f => f.name?.match(/\.(jpg|jpeg|png|webp|gif)$/i));
+                    if (testFile) testFile.name = 'gambar/' + testFile.name;
+                }
+
+                if (!testFile) {
+                    log('result5', '⚠️ No photos found to test', 'warning');
+                    setStatus('status5', 'failed');
+                    return false;
+                }
+
+                const { data } = supabase
+                    .storage
+                    .from(STORAGE_BUCKET)
+                    .getPublicUrl(testFile.name);
+
+                log('result5', `Testing file: ${testFile.name}`, 'info');
+                log('result5', `Public URL: ${data.publicUrl}`, 'info');
+
+                // Try to fetch the image
+                log('result5', 'Attempting to fetch image...', 'info');
+                const response = await fetch(data.publicUrl);
+
+                if (response.ok) {
+                    log('result5', `✅ Image accessible! (HTTP ${response.status})`, 'success');
+                    log('result5', `Content-Type: ${response.headers.get('content-type')}`, 'info');
+                    log('result5', `Size: ${(response.headers.get('content-length') / 1024).toFixed(2)} KB`, 'info');
+                    setStatus('status5', 'success');
+                    return true;
+                } else {
+                    log('result5', `❌ Image not accessible (HTTP ${response.status})`, 'error');
+                    log('result5', '💡 Make sure bucket is PUBLIC in Supabase Dashboard', 'warning');
+                    setStatus('status5', 'failed');
+                    return false;
+                }
+            } catch (error) {
+                log('result5', `❌ Error: ${error.message}`, 'error');
+                setStatus('status5', 'failed');
+                return false;
+            }
+        }
+
+        async function runAllTests() {
+            const tests = [
+                { fn: testConfig, name: 'Configuration' },
+                { fn: testConnection, name: 'Connection' },
+                { fn: testBucket, name: 'Bucket Access' },
+                { fn: testListPhotos, name: 'Photo Listing' },
+                { fn: testPublicURL, name: 'Public URL' }
+            ];
+
+            for (const test of tests) {
+                console.log(`Running ${test.name}...`);
+                await test.fn();
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+
+            console.log('All tests completed!');
+        }
+    </script>
+</body>
+</html>
