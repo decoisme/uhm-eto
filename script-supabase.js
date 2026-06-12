@@ -4,7 +4,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const STORAGE_BUCKET = 'photos'; // Nama bucket di Supabase Storage
 
 // Initialize Supabase
-let supabase;
+let supabaseClient;
 let photos = [];
 let isLoadingPhotos = true;
 
@@ -30,7 +30,7 @@ async function initSupabase() {
     
     try {
         // Initialize Supabase client
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         
         console.log('✅ Supabase connected');
         
@@ -49,7 +49,7 @@ async function loadPhotosFromSupabase() {
     
     try {
         // List all files in the bucket
-        const { data: files, error } = await supabase
+        const { data: files, error } = await supabaseClient
             .storage
             .from(STORAGE_BUCKET)
             .list('', {
@@ -75,7 +75,7 @@ async function loadPhotosFromSupabase() {
         
         // Generate photo array with public URLs
         photos = imageFiles.map((file, index) => {
-            const { data } = supabase
+            const { data } = supabaseClient
                 .storage
                 .from(STORAGE_BUCKET)
                 .getPublicUrl(file.name);
