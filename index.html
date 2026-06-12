@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>For My Best Friend • 14.06.2026</title>
+    <meta name="description" content="A gesture-based 3D interactive memory gallery">
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-content">
+            <div class="nav-brand">
+                <span class="nav-date">14.06.2026</span>
+                <span class="nav-divider">•</span>
+                <span class="nav-title">For My Best Friend</span>
+            </div>
+            <div class="nav-actions">
+                <button id="audioBtn" class="btn-icon" title="Toggle Audio">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                        <path class="audio-wave" d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                    </svg>
+                </button>
+                <button id="fullscreenBtn" class="btn-icon" title="Fullscreen">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Canvas -->
+    <canvas id="canvas"></canvas>
+    
+    <!-- Hidden Video for Hand Tracking -->
+    <video id="video" autoplay playsinline style="display: none;"></video>
+
+    <!-- Control Panel -->
+    <aside class="control-panel">
+        <div class="panel-header">
+            <h3>Visual Controls</h3>
+            <div class="status">
+                <div class="status-dot" id="status"></div>
+                <span id="statusText">Initializing...</span>
+            </div>
+        </div>
+
+        <!-- Pattern Selection -->
+        <div class="control-group">
+            <label>Particle Pattern</label>
+            <div class="pattern-grid">
+                <button class="pattern-btn active" data-pattern="sphere">
+                    <span class="pattern-icon">●</span>
+                    <span>Sphere</span>
+                </button>
+                <button class="pattern-btn" data-pattern="heart">
+                    <span class="pattern-icon">♥</span>
+                    <span>Heart</span>
+                </button>
+                <button class="pattern-btn" data-pattern="spiral">
+                    <span class="pattern-icon">◎</span>
+                    <span>Spiral</span>
+                </button>
+                <button class="pattern-btn" data-pattern="wave">
+                    <span class="pattern-icon">≋</span>
+                    <span>Wave</span>
+                </button>
+                <button class="pattern-btn" data-pattern="galaxy">
+                    <span class="pattern-icon">✦</span>
+                    <span>Galaxy</span>
+                </button>
+                <button class="pattern-btn" data-pattern="cube">
+                    <span class="pattern-icon">▣</span>
+                    <span>Cube</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Color Picker -->
+        <div class="control-group">
+            <label>Particle Color</label>
+            <input type="color" id="colorPicker" value="#FF4FA2">
+            <div class="color-presets">
+                <button class="preset" data-color="#FF4FA2" style="--c: #FF4FA2"></button>
+                <button class="preset" data-color="#FFFFFF" style="--c: #FFFFFF"></button>
+                <button class="preset" data-color="#8B5CF6" style="--c: #8B5CF6"></button>
+                <button class="preset" data-color="#3B82F6" style="--c: #3B82F6"></button>
+                <button class="preset" data-color="#10B981" style="--c: #10B981"></button>
+                <button class="preset" data-color="#F59E0B" style="--c: #F59E0B"></button>
+            </div>
+        </div>
+
+        <!-- Gesture Guide -->
+        <div class="control-group">
+            <label>Gesture Controls</label>
+            <div class="gesture-list">
+                <div class="gesture-item">
+                    <span class="g-icon">✋</span>
+                    <div>
+                        <strong>Open Hand</strong>
+                        <small>Navigate photos</small>
+                    </div>
+                </div>
+                <div class="gesture-item">
+                    <span class="g-icon">✊</span>
+                    <div>
+                        <strong>Closed Fist</strong>
+                        <small>Pause slideshow</small>
+                    </div>
+                </div>
+                <div class="gesture-item">
+                    <span class="g-icon">👆</span>
+                    <div>
+                        <strong>Point Finger</strong>
+                        <small>View detail</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Photo Info -->
+    <div class="photo-info">
+        <div class="photo-counter">
+            <span id="current">1</span> / <span id="total">10</span>
+        </div>
+        <div class="photo-title" id="title">Loading...</div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats">
+        <div class="stat">
+            <span class="stat-icon">📸</span>
+            <span class="stat-value" id="viewed">0</span>
+            <span class="stat-label">Viewed</span>
+        </div>
+        <div class="stat">
+            <span class="stat-icon">⏱️</span>
+            <span class="stat-value" id="time">0:00</span>
+            <span class="stat-label">Time</span>
+        </div>
+    </div>
+
+    <!-- Gesture Indicator -->
+    <div class="gesture-indicator" id="indicator">
+        <div class="g-icon-large" id="gIcon">✋</div>
+        <div class="g-status" id="gStatus">Detected</div>
+    </div>
+
+    <!-- Photo Detail Overlay -->
+    <div class="overlay" id="overlay">
+        <button class="close-btn" id="closeBtn">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+        <div class="overlay-content">
+            <img id="overlayImg" src="" alt="">
+            <div class="overlay-caption" id="overlayCaption"></div>
+        </div>
+    </div>
+
+    <!-- Welcome Screen -->
+    <div class="welcome" id="welcome">
+        <h1>Welcome to Our Memories</h1>
+        <p>Untuk sahabat terbaikku yang selalu ada</p>
+        <div class="welcome-hint">
+            <span>✋</span>
+            <span>Buka telapak tangan untuk memulai</span>
+        </div>
+    </div>
+
+    <!-- Progress Ring -->
+    <svg class="progress-ring" id="progress" width="100" height="100">
+        <circle cx="50" cy="50" r="45" stroke="rgba(255,79,162,0.2)" stroke-width="3" fill="none"/>
+        <circle id="progressCircle" cx="50" cy="50" r="45" stroke="#FF4FA2" stroke-width="3" fill="none" 
+                stroke-dasharray="283" stroke-dashoffset="283" transform="rotate(-90 50 50)"/>
+    </svg>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
