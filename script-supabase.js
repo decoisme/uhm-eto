@@ -48,30 +48,69 @@ async function loadPhotosFromSupabase() {
     console.log('📸 Loading photos from Supabase Storage...');
     
     try {
-        // List all files in the bucket
-        const { data: files, error } = await supabaseClient
+        // List all files in the bucket (try root first)
+        console.log('Listing files from bucket:', STORAGE_BUCKET);
+        
+        let { data: files, error } = await supabaseClient
             .storage
             .from(STORAGE_BUCKET)
             .list('', {
-                limit: 100,
+                limit: 1000,
                 offset: 0,
                 sortBy: { column: 'name', order: 'asc' }
             });
         
         if (error) {
+            console.error('Error listing files:', error);
             throw error;
         }
         
-        console.log(`✅ Found ${files.length} photos in Supabase`);
+        console.log('📁 Raw files from Supabase:', files);
+        console.log('📊 Total items found:', files.length);
+        
+        // Check if files are in a subfolder
+        const folders = files.filter(f => !f.name.match(/\.(jpg|jpeg|png|webp)$/i));
+        console.log('📂 Folders found:', folders.map(f => f.name));
+        
+        // If no images in root, try 'gambar' folder
+        if (files.length === 0 || !files.some(f => f.name.match(/\.(jpg|jpeg|png|webp)$/i))) {
+            console.log('🔍 No images in root, trying "gambar" folder...');
+            
+            const { data: subFiles, error: subError } = await supabaseClient
+                .storage
+                .from(STORAGE_BUCKET)
+                .list('gambar', {
+                    limit: 1000,
+                    offset: 0,
+                    sortBy: { column: 'name', order: 'asc' }
+                });
+            
+            if (!subError && subFiles && subFiles.length > 0) {
+                console.log('✅ Found files in "gambar" folder:', subFiles.length);
+                files = subFiles.map(f => ({ ...f, name: `gambar/${f.name}` }));
+            }
+        }
+        
+        console.log(`✅ Found ${files.length} items in Supabase`);
         
         // Filter image files only
         const imageFiles = files.filter(file => {
             const ext = file.name.toLowerCase();
-            return ext.endsWith('.jpg') || ext.endsWith('.jpeg') || 
-                   ext.endsWith('.png') || ext.endsWith('.webp');
+            const isImage = ext.endsWith('.jpg') || ext.endsWith('.jpeg') || 
+                           ext.endsWith('.png') || ext.endsWith('.webp') ||
+                           ext.endsWith('.gif');
+            if (isImage) {
+                console.log('✅ Valid image:', file.name);
+            }
+            return isImage;
         });
         
         console.log(`📷 ${imageFiles.length} valid image files`);
+        
+        if (imageFiles.length === 0) {
+            console.warn('⚠️ No image files found. Files in bucket:', files.map(f => f.name));
+            throw new Error('No images found');
+        }
         
         // Generate photo array with public URLs
         photos = imageFiles.map((file, index) => {
@@ -80,10 +119,12 @@ async function loadPhotosFromSupabase() {
                 .from(STORAGE_BUCKET)
                 .getPublicUrl(file.name);
             
+            console.log(`📸 Photo ${index + 1}: ${file.name} → ${data.publicUrl}`);
+            
             return {
                 url: data.publicUrl,
                 title: `Memory #${index + 1}`,
-                caption: file.name.replace(/\.[^/.]+$/, ''), // Remove extension
+                caption: file.name.replace(/\.[^/.]+$/, '').replace('gambar/', ''),
                 fileName: file.name,
                 loaded: false,
                 texture: null
@@ -91,6 +132,8 @@ async function loadPhotosFromSupabase() {
         });
         
         console.log('✅ Photos loaded:', photos.length);
+        console.log('📋 Sample URL:', photos[0]?.url);
+        
         isLoadingPhotos = false;
         
         // Update UI with total
@@ -98,11 +141,13 @@ async function loadPhotosFromSupabase() {
         
         if (photos.length === 0) {
             console.warn('⚠️ No photos found in Supabase Storage');
-            alert('No photos found in Supabase Storage. Please upload photos first.');
+            // Don't show alert, just fallback
+            throw new Error('No photos found');
         }
         
     } catch (error) {
         console.error('❌ Error loading photos from Supabase:', error);
+        console.log('📁 Falling back to local photos...');
         // Fallback to local
         loadLocalPhotos();
     }
