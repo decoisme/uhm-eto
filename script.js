@@ -7,11 +7,17 @@ const totalPhotos = 44; // Ubah sesuai jumlah foto kamu
 const photoExtension = 'jpeg'; // jpg, png, atau webp
 const photos = [];
 
+// Lazy loading & preloading configuration
+const PRELOAD_COUNT = 5; // Preload 5 foto pertama
+const LAZY_LOAD_DISTANCE = 3; // Load 3 foto sebelum dan sesudah current
+
 for (let i = 1; i <= totalPhotos; i++) {
     photos.push({
-        url: `gambar/${i}.jpeg`,
+        url: `gambar/${i}.${photoExtension}`,
         title: `Memory #${i}`,
-        caption: `Beautiful moment ${i} together`
+        caption: `Beautiful moment ${i} together`,
+        loaded: false,
+        texture: null
     });
 }
 
@@ -57,6 +63,11 @@ let pointTimer = null;
 let viewedPhotos = new Set();
 let startTime = Date.now();
 let time = 0;
+
+// Performance optimization
+let textureCache = new Map();
+let isLoadingTexture = false;
+let pendingTextureLoad = null;
 
 // ===== Three.js Setup =====
 function initThree() {
@@ -114,7 +125,7 @@ function createPhotoPlane() {
 function createParticles(pattern) {
     if (particleSystem) scene.remove(particleSystem);
     
-    const count = 6000;
+    const count = 5000; // Optimized untuk production
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
@@ -305,37 +316,106 @@ function animate() {
 function updatePhotoTexture() {
     const photo = photos[currentPhoto];
     
-    console.log('🖼️ Loading photo:', photo.url);
+    // Skip if already loading
+    if (isLoadingTexture) {
+        pendingTextureLoad = currentPhoto;
+        return;
+    }
     
-    // Direct load tanpa fade (lebih cepat untuk slideshow)
+    // Check cache first
+    if (textureCache.has(currentPhoto)) {
+        console.log('📦 Using cached texture:', photo.url);
+        applyTexture(textureCache.get(currentPhoto));
+        return;
+    }
+    
+    console.log('🖼️ Loading photo:', photo.url);
+    isLoadingTexture = true;
+    
+    // Load texture
     textureLoader.load(
         photo.url,
         (texture) => {
-            console.log('✅ Photo loaded successfully:', photo.url);
-            if (photoPlane?.material) {
-                photoPlane.material.map = texture;
-                photoPlane.material.needsUpdate = true;
-                
-                // Set opacity langsung berdasarkan state
-                if (isSlideshow) {
-                    photoPlane.material.opacity = 0.75;
-                } else {
-                    photoPlane.material.opacity = 0.25;
-                }
-                
-                console.log('✅ Texture applied to photoPlane, opacity:', photoPlane.material.opacity);
+            console.log('✅ Photo loaded:', photo.url);
+            
+            // Cache texture
+            textureCache.set(currentPhoto, texture);
+            photos[currentPhoto].loaded = true;
+            photos[currentPhoto].texture = texture;
+            
+            applyTexture(texture);
+            isLoadingTexture = false;
+            
+            // Load pending texture if any
+            if (pendingTextureLoad !== null && pendingTextureLoad !== currentPhoto) {
+                const pending = pendingTextureLoad;
+                pendingTextureLoad = null;
+                currentPhoto = pending;
+                updatePhotoTexture();
             }
         },
         (progress) => {
-            // Loading progress
             if (progress.lengthComputable) {
                 const percent = (progress.loaded / progress.total) * 100;
-                console.log(`⏳ Loading ${photo.url}: ${percent.toFixed(0)}%`);
+                if (percent % 25 === 0) { // Log setiap 25%
+                    console.log(`⏳ Loading ${percent.toFixed(0)}%`);
+                }
             }
         },
         (error) => {
             console.error('❌ Error loading photo:', photo.url, error);
-            console.error('Error details:', error.message || error);
+            isLoadingTexture = false;
+            
+            // Try next photo on error
+            if (isSlideshow) {
+                nextPhoto();
+            }
+        }
+    );
+}
+
+function applyTexture(texture) {
+    if (photoPlane?.material) {
+        photoPlane.material.map = texture;
+        photoPlane.material.needsUpdate = true;
+        
+        // Set opacity based on state
+        if (isSlideshow) {
+            photoPlane.material.opacity = 0.75;
+        } else {
+            photoPlane.material.opacity = 0.25;
+        }
+        
+        console.log('✅ Texture applied, opacity:', photoPlane.material.opacity);
+    }
+}
+
+// Preload nearby photos
+function preloadNearbyPhotos() {
+    const start = Math.max(0, currentPhoto - LAZY_LOAD_DISTANCE);
+    const end = Math.min(photos.length - 1, currentPhoto + LAZY_LOAD_DISTANCE);
+    
+    for (let i = start; i <= end; i++) {
+        if (!textureCache.has(i) && !photos[i].loaded) {
+            preloadPhoto(i);
+        }
+    }
+}
+
+function preloadPhoto(index) {
+    const photo = photos[index];
+    
+    textureLoader.load(
+        photo.url,
+        (texture) => {
+            textureCache.set(index, texture);
+            photos[index].loaded = true;
+            photos[index].texture = texture;
+            console.log('📥 Preloaded:', photo.url);
+        },
+        undefined,
+        (error) => {
+            console.warn('⚠️ Preload failed:', photo.url);
         }
     );
 }
@@ -458,7 +538,10 @@ function startSlideshow() {
     // Load first photo immediately
     updatePhotoTexture();
     
-    slideshowInterval = setInterval(nextPhoto, 200); // Lebih cepat: 0.2 detik
+    // Preload nearby photos
+    preloadNearbyPhotos();
+    
+    slideshowInterval = setInterval(nextPhoto, 300); // Balanced: 0.3 detik
 }
 
 function stopSlideshow() {
@@ -479,6 +562,9 @@ function nextPhoto() {
     updateUI();
     updatePhotoTexture(); // Load texture untuk photo plane
     updateProgress();
+    
+    // Preload nearby photos for smooth experience
+    preloadNearbyPhotos();
 }
 
 function updateUI() {
@@ -589,16 +675,25 @@ function init() {
     initEvents();
     updateUI();
     
+    // Preload first few photos
+    console.log('📸 Preloading initial photos...');
+    for (let i = 0; i < Math.min(PRELOAD_COUNT, photos.length); i++) {
+        preloadPhoto(i);
+    }
+    
     // Load first photo
-    console.log('📸 Loading first photo...');
-    updatePhotoTexture();
+    setTimeout(() => {
+        console.log('📸 Loading first photo...');
+        updatePhotoTexture();
+    }, 100);
     
     startTimer();
     
     // Lazy load MediaPipe
-    setTimeout(initMediaPipe, 300);
+    setTimeout(initMediaPipe, 500);
     
     console.log('✅ Initialization complete!');
+    console.log('💡 Tip: First', PRELOAD_COUNT, 'photos are preloaded for smooth start');
 }
 
 // Start
