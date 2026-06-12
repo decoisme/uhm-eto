@@ -1,6 +1,6 @@
 // ===== Supabase Configuration =====
-const SUPABASE_URL = 'YOUR_SUPABASE_URL'; // Ganti dengan URL Supabase kamu
-const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY'; // Ganti dengan anon key kamu
+const SUPABASE_URL = 'https://rdxyazvuvjbpofebzrnc.supabase.co'; // Ganti dengan URL Supabase kamu
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJkeHlhenZ1dmpicG9mZWJ6cm5jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyMjU0NjMsImV4cCI6MjA5NjgwMTQ2M30.0B8i-w77gUADrrXnlOJIXKjfQn9U4ylznCu-Lccmv4c'; // Ganti dengan anon key kamu
 const STORAGE_BUCKET = 'photos'; // Nama bucket di Supabase Storage
 
 // Initialize Supabase
